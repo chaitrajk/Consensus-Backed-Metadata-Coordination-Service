@@ -24,6 +24,7 @@ public final class RaftHttpServer {
     private final List<String> nodeIds = List.of("n1", "n2", "n3");
     private final Map<String, RaftNode> cluster = new ConcurrentHashMap<>();
     private final Set<WsContext> wsClients = ConcurrentHashMap.newKeySet();
+
     private final ScheduledExecutorService broadcastScheduler =
             Executors.newSingleThreadScheduledExecutor();
 
@@ -36,12 +37,10 @@ public final class RaftHttpServer {
     // ---------------- CLUSTER SETUP ----------------
 
     private void bootstrapCluster() {
-
         LeaderElection.RpcClient rpcClient =
                 new RaftNode.InProcessRpcClient(cluster);
 
         for (String nodeId : nodeIds) {
-
             List<String> peers = nodeIds.stream()
                     .filter(id -> !id.equals(nodeId))
                     .toList();
@@ -62,13 +61,10 @@ public final class RaftHttpServer {
     // ---------------- SERVER START ----------------
 
     public void start() {
-
         app = Javalin.create(cfg -> {
-
             cfg.bundledPlugins.enableCors(cors -> {
                 cors.addRule(it -> it.anyHost());
             });
-
             cfg.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/";
                 staticFiles.directory = "/public";
@@ -82,44 +78,46 @@ public final class RaftHttpServer {
         app.get("/logs", ctx -> ctx.json(getLogs()));
         app.get("/metadata", ctx -> ctx.json(getMetadata()));
 
+        app.get("/metrics", ctx -> {
+            RaftNode leader = pickLeader();
+
+            Map<String, Object> metrics = new LinkedHashMap<>();
+            metrics.put("electionsWon", 1); // placeholder
+            metrics.put("leaderUptimeMs", 12345); // placeholder
+            metrics.put("currentLeaderId", leader != null ? leader.getId() : null);
+
+            ctx.json(metrics);
+        });
+
         // -------- CONTROL ROUTES --------
 
-app.post("/control/demo", ctx -> {
-    RaftNode leader = pickLeader();
-
-    if (leader == null) {
-        ctx.status(500).result("No leader available");
-        return;
-    }
-
-    try {
-        String key = "demoKey";
-        String value = "demoValue-" + System.currentTimeMillis();
-
-        leader.putMetadata(key, value);
-
-        ctx.status(200).result("Metadata appended via Raft");
-
-    } catch (Exception e) {
-        ctx.status(500).result("Error: " + e.getMessage());
-    }
-});
+        app.post("/control/demo", ctx -> {
+            RaftNode leader = pickLeader();
+            if (leader == null) {
+                ctx.status(500).result("No leader available");
+                return;
+            }
+            try {
+                String key = "demoKey";
+                String value = "demoValue-" + System.currentTimeMillis();
+                leader.putMetadata(key, value);
+                ctx.status(200).result("Metadata appended via Raft");
+            } catch (Exception e) {
+                ctx.status(500).result("Error: " + e.getMessage());
+            }
+        });
 
         app.post("/control/crash/{nodeId}", ctx -> {
-
             String nodeId = ctx.pathParam("nodeId");
             RaftNode node = cluster.get(nodeId);
-
             if (node != null) {
                 node.close();
                 cluster.remove(nodeId);
             }
-
             ctx.status(200).result("Crashed " + nodeId);
         });
 
         app.post("/control/restart/{nodeId}", ctx -> {
-
             String nodeId = ctx.pathParam("nodeId");
 
             if (cluster.containsKey(nodeId)) {
@@ -170,16 +168,15 @@ app.post("/control/demo", ctx -> {
         );
 
         int port = Integer.parseInt(
-        System.getenv().getOrDefault("PORT", "8080")
-);
-app.start(port);
+                System.getenv().getOrDefault("PORT", "8080")
+        );
 
+        app.start(port);
     }
 
     // ---------------- STATE BROADCAST ----------------
 
     private void broadcastState() {
-
         if (wsClients.isEmpty()) return;
 
         try {
@@ -199,11 +196,9 @@ app.start(port);
     }
 
     private List<Map<String, Object>> getNodes() {
-
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (String nodeId : nodeIds) {
-
             RaftNode node = cluster.get(nodeId);
 
             Map<String, Object> info = new LinkedHashMap<>();
@@ -226,7 +221,6 @@ app.start(port);
     }
 
     private List<Map<String, Object>> getLogs() {
-
         RaftNode source = pickLeader();
         if (source == null) return List.of();
 
@@ -234,7 +228,6 @@ app.start(port);
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (int i = 0; i < entries.size(); i++) {
-
             var e = entries.get(i);
 
             Map<String, Object> m = new LinkedHashMap<>();
@@ -249,21 +242,17 @@ app.start(port);
     }
 
     private Map<String, String> getMetadata() {
-
         RaftNode source = pickLeader();
         if (source == null) return Map.of();
-
         return new LinkedHashMap<>(source.dumpMetadataSnapshot());
     }
 
     private RaftNode pickLeader() {
-
         for (RaftNode node : cluster.values()) {
             if (node.getRole() == RaftRole.LEADER) {
                 return node;
             }
         }
-
         return null;
     }
 
