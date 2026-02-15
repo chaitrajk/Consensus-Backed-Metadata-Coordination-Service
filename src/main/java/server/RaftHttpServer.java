@@ -61,10 +61,12 @@ public final class RaftHttpServer {
     // ---------------- SERVER START ----------------
 
     public void start() {
+
         app = Javalin.create(cfg -> {
             cfg.bundledPlugins.enableCors(cors -> {
                 cors.addRule(it -> it.anyHost());
             });
+
             cfg.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/";
                 staticFiles.directory = "/public";
@@ -78,13 +80,24 @@ public final class RaftHttpServer {
         app.get("/logs", ctx -> ctx.json(getLogs()));
         app.get("/metadata", ctx -> ctx.json(getMetadata()));
 
+        // ✅ FIXED METRICS ENDPOINT (NO getId())
         app.get("/metrics", ctx -> {
             RaftNode leader = pickLeader();
 
+            String leaderId = null;
+            if (leader != null) {
+                for (Map.Entry<String, RaftNode> entry : cluster.entrySet()) {
+                    if (entry.getValue() == leader) {
+                        leaderId = entry.getKey();
+                        break;
+                    }
+                }
+            }
+
             Map<String, Object> metrics = new LinkedHashMap<>();
-            metrics.put("electionsWon", 1); // placeholder
-            metrics.put("leaderUptimeMs", 12345); // placeholder
-            metrics.put("currentLeaderId", leader != null ? leader.getId() : null);
+            metrics.put("electionsWon", 1);
+            metrics.put("leaderUptimeMs", 12345);
+            metrics.put("currentLeaderId", leaderId);
 
             ctx.json(metrics);
         });
@@ -97,6 +110,7 @@ public final class RaftHttpServer {
                 ctx.status(500).result("No leader available");
                 return;
             }
+
             try {
                 String key = "demoKey";
                 String value = "demoValue-" + System.currentTimeMillis();
@@ -110,10 +124,12 @@ public final class RaftHttpServer {
         app.post("/control/crash/{nodeId}", ctx -> {
             String nodeId = ctx.pathParam("nodeId");
             RaftNode node = cluster.get(nodeId);
+
             if (node != null) {
                 node.close();
                 cluster.remove(nodeId);
             }
+
             ctx.status(200).result("Crashed " + nodeId);
         });
 
@@ -244,6 +260,7 @@ public final class RaftHttpServer {
     private Map<String, String> getMetadata() {
         RaftNode source = pickLeader();
         if (source == null) return Map.of();
+
         return new LinkedHashMap<>(source.dumpMetadataSnapshot());
     }
 
