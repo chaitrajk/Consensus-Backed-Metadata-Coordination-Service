@@ -1,3 +1,4 @@
+Consensus‑Backed Metadata & Coordination Service
 (Raft-based, Single-Developer Scale)
 A minimal, production-style implementation of a Raft-backed metadata and coordination service.
 
