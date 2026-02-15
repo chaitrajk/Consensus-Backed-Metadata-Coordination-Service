@@ -18,7 +18,11 @@ export async function fetchMetadata(): Promise<Record<string, string>> {
 
 export async function fetchMetrics(): Promise<RaftMetrics> {
   const { data } = await api.get<RaftMetrics>('/metrics');
-  return data ?? { electionsWon: 0, leaderUptimeMs: 0, currentLeaderId: null };
+  return data ?? {
+    electionsWon: 0,
+    leaderUptimeMs: 0,
+    currentLeaderId: null,
+  };
 }
 
 export async function fetchAll() {
@@ -28,11 +32,20 @@ export async function fetchAll() {
     fetchMetadata(),
     fetchMetrics(),
   ]);
+
   return { nodes, logs, metadata, metrics };
 }
 
-export async function controlNode(nodeId: string, action: 'crash' | 'restore'): Promise<void> {
-  await api.post('/control', { nodeId, action });
+// ✅ FIXED control endpoint mapping
+export async function controlNode(
+  nodeId: string,
+  action: 'crash' | 'restore'
+): Promise<void> {
+  if (action === 'crash') {
+    await api.post(`/control/crash/${nodeId}`);
+  } else if (action === 'restore') {
+    await api.post(`/control/restart/${nodeId}`);
+  }
 }
 
 export async function appendDemoMetadata(): Promise<void> {
@@ -40,3 +53,4 @@ export async function appendDemoMetadata(): Promise<void> {
 }
 
 export { getWsUrl };
+
